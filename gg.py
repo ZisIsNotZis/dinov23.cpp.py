@@ -1,4 +1,4 @@
-from ctypes import POINTER, c_void_p, c_float, cast as ccast, _Pointer
+from ctypes import POINTER, c_void_p, c_float, casserteq as ccasserteq, _Pointer
 from math import prod
 from logging import info, warning, basicConfig
 from atexit import register
@@ -9,8 +9,8 @@ from ggml.utils import to_numpy, from_numpy
 import numpy as np
 
 
-def dbg[**P, T](f: Callable[P, T], lv=[0]) -> Callable[P, T]:
-    def dbg(*_: P.args, **__: P.kwargs) -> T:
+def debug[**P, T](f: Callable[P, T], lv=[0]) -> Callable[P, T]:
+    def debug(*_: P.args, **__: P.kwargs) -> T:
         info('%s%s %s', '\t' * lv[0], f.__name__, ' '.join(map(objstr, _)))
         lv[0] += 1
         try:
@@ -20,14 +20,14 @@ def dbg[**P, T](f: Callable[P, T], lv=[0]) -> Callable[P, T]:
         finally:
             lv[0] -= 1
 
-    return dbg
+    return debug
 
 
-def ast[T](a: T, b: T) -> None:
+def asserteq[T](a: T, b: T) -> None:
     assert a == b, (a, b)
 
 
-@dbg
+@debug
 def getkey(ctx_gguf: gguf_context_p, key: str) -> int:
     if (t := gguf_find_key(ctx_gguf, key.encode())) < 0:
         raise KeyError(key)
@@ -89,13 +89,13 @@ class Tensor:
 
     @property
     def shape(self) -> tuple[int, ...]:
-        return cast(tuple[int, ...], tuple(map(int, self.base.contents.ne)))
+        return casserteq(tuple[int, ...], tuple(map(int, self.base.contents.ne)))
 
     @property
     def stride(self) -> tuple[int, ...]:
-        return cast(tuple[int, ...], tuple(map(int, self.base.contents.nb)))
+        return casserteq(tuple[int, ...], tuple(map(int, self.base.contents.nb)))
 
-    @dbg
+    @debug
     def flatten(self, i=0, j=3, s=(-1,)) -> 'Tensor':
         shape = list(self.shape)
         stride = list(self.stride)
@@ -114,7 +114,7 @@ class Tensor:
         stride += list(stride[-1:]) * (4 - len(stride))
         return Tensor(ggml_view_4d(GRAPHCTX, self.base, *shape, *stride[1:], 0)).named('flatten')
 
-    @dbg
+    @debug
     def permute(self, i=0, j=1, k=2, l=3) -> 'Tensor':
         return Tensor(ggml_permute(GRAPHCTX, self.base, i, j, k, l)).named('permute')
 
@@ -138,7 +138,7 @@ class Tensor:
     def untranspose(self) -> 'Tensor':
         return Tensor(ggml_cont(GRAPHCTX, self.base)).named('untranspose') if ggml_is_transposed(self.base) else self
 
-    @dbg
+    @debug
     def __getitem__(self, i: int | None | slice | tuple[int | None | slice]) -> 'Tensor':
         self = self.untranspose()
         shape = list(self.shape)
@@ -164,25 +164,25 @@ class Tensor:
                 j += 1
         return Tensor(ggml_view_4d(GRAPHCTX, self.base, *rjust(shape), *rjust(stride, v=stride[-1])[1:], offset)).named('getitem')
 
-    @dbg
+    @debug
     def cat(self, _: 'Tensor', i) -> 'Tensor':
         self, _ = self.expand(_, i)
         return Tensor(ggml_concat(GRAPHCTX, self.base, _.base, i)).named('cat')
 
-    @dbg
+    @debug
     def rcat(self, _: 'Tensor', i) -> 'Tensor':
         self, _ = self.expand(_, i)
         return Tensor(ggml_concat(GRAPHCTX, _.base, self.base, i)).named('rcat')
 
     def asnp(self) -> np.ndarray:
-        return np.lib.stride_tricks.as_strided(np.asarray(ccast(self.base.contents.data, POINTER(c_float * 0)).contents).view(self.asdtype[self.base.contents.type]), self.shape[::-1], self.stride[::-1])
+        return np.lib.stride_tricks.as_strided(np.asarray(ccasserteq(self.base.contents.data, POINTER(c_float * 0)).contents).view(self.asdtype[self.base.contents.type]), self.shape[::-1], self.stride[::-1])
 
     def tonp(self) -> np.ndarray:
         return to_numpy(self.base)
 
     def setnp(self, x: np.ndarray) -> None:
-        ast(x.dtype, self.asdtype[self.base.contents.type])
-        ast(self.shape[::-1], ljust(x.shape))
+        asserteq(x.dtype, self.asdtype[self.base.contents.type])
+        asserteq(self.shape[::-1], ljust(x.shape))
         assert ggml_is_contiguous(self.base)
         x = np.ascontiguousarray(x)
         ggml_backend_tensor_set(self.base, x.ctypes.data, 0, x.nbytes)
@@ -200,107 +200,87 @@ class Tensor:
     def softmax(self, scale) -> 'Tensor':
         return Tensor(ggml_soft_max_ext(GRAPHCTX, self.base, None, scale, 0.)).named('softmax')
 
-    @dbg
+    @debug
     def add_(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_)
         return Tensor(ggml_add_inplace(GRAPHCTX, self.untranspose().base, _.untranspose().base)).named('add')
 
-    @dbg
+    @debug
     def add(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_)
         return Tensor(ggml_add(GRAPHCTX, self.untranspose().base, _.untranspose().base)).named('add')
 
-    @dbg
+    @debug
     def sub_(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_)
         return Tensor(ggml_sub_inplace(GRAPHCTX, self.untranspose().base, _.untranspose().base)).named('sub')
 
-    @dbg
+    @debug
     def sub(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_)
         return Tensor(ggml_sub(GRAPHCTX, self.untranspose().base, _.untranspose().base)).named('sub')
 
-    @dbg
+    @debug
     def mul_(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_)
         return Tensor(ggml_mul_inplace(GRAPHCTX, self.untranspose().base, _.untranspose().base)).named('mul')
 
-    @dbg
+    @debug
     def mul(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_)
         return Tensor(ggml_mul(GRAPHCTX, self.untranspose().base, _.untranspose().base)).named('mul')
 
-    @dbg
+    @debug
     def dot(self, _: 'Tensor') -> 'Tensor':
         self.expandshape(_, 1)
         return Tensor(ggml_mul_mat(GRAPHCTX, _.untranspose().base, self.untranspose().base)).named('dot')
 
-    @dbg
+    @debug
     def scale_(self, _: str) -> 'Tensor':
         return self.mul_(Tensor(_ + '.weight')).add_(Tensor(_ + '.bias')).named('scale')
 
-    @dbg
+    @debug
     def scale(self, _: str) -> 'Tensor':
         return self.mul(Tensor(_ + '.weight')).add_(Tensor(_ + '.bias')).named('scale')
 
-    @dbg
+    @debug
     def norm_(self, _: str) -> 'Tensor':
         return Tensor(ggml_norm_inplace(GRAPHCTX, self.base, 1e-6)).scale_(_).named('norm')
 
-    @dbg
+    @debug
     def norm(self, _: str) -> 'Tensor':
         return Tensor(ggml_norm(GRAPHCTX, self.base, 1e-6)).scale_(_).named('norm')
 
-    @dbg
+    @debug
     def lin(self, *_: str) -> 'Tensor':
-        t = self
         for nxt, _ in zip(range(len(_))[::-1], _):
             if _:
                 try:
-                    t = t.dot(Tensor(_ + '.weight'))
+                    self = self.dot(Tensor(_ + '.weight'))
                 except KeyError:
                     if not nxt:
                         raise
                     info('%s.weight no found, try next', _)
                     continue
                 try:
-                    t = t.add(Tensor(_ + '.bias')) if t is self else t.add_(Tensor(_ + '.bias'))
+                    self = self.add_(Tensor(_ + '.bias'))
                 except KeyError:
                     warning('%s.bias no found, ignore', _)
-            return t.named('lin')
+            return self.named('lin')
         raise
 
-    @dbg
-    def lin_(self, *_: str) -> 'Tensor':
-        t = self
-        for nxt, _ in zip(range(len(_))[::-1], _):
-            if _:
-                try:
-                    t = t.dot(Tensor(_ + '.weight'))
-                except KeyError:
-                    if not nxt:
-                        raise
-                    info('%s.weight no found, try next', _)
-                    continue
-                try:
-                    t = t.add_(Tensor(_ + '.bias'))
-                except KeyError:
-                    warning('%s.bias no found, ignore', _)
-            return t.named('lin')
-        raise
-
-    @dbg
+    @debug
     def mlp(self, _: str) -> 'Tensor':
         return self.lin(_ + '.fc1', _ + '.weights_in', _ + '.up_proj').gelu_().lin(_ + '.fc2', _ + '.weights_out', _ + '.down_proj').named('mlp')
 
-    @dbg
+    @debug
     def swiglu(self, _: str) -> 'Tensor':
         x = self.lin(_ + '.fc1', _ + '.weights_in', _ + '.up_proj')
         a = x[:x.shape[0] // 2].silu_()
         b = x[x.shape[0] // 2:]
         return a.mul_(b).lin(_ + '.fc2', _ + '.weights_out', _ + '.down_proj').named('swiglu')
 
-    @dbg
+    @debug
     def mlpOrSwiglu(self, _: str):
         try:
             return self.mlp(_)
@@ -308,12 +288,12 @@ class Tensor:
             warning('mlp no found, try swiglu')
             return self.swiglu(_)
 
-    @dbg
+    @debug
     def conv(self, _: 'Tensor') -> 'Tensor':
-        ast(self.shape[2], _.shape[2])
+        asserteq(self.shape[2], _.shape[2])
         return Tensor(ggml_conv_2d_sk_p0(GRAPHCTX, _.base, self.base)).named('conv')
 
-    @dbg
+    @debug
     def at(self, _: str) -> 'Tensor':
         try:
             x = self.lin(_ + '.attention.qkv').flatten(0, 0, (-1, 3))  # cg 3 wh n
@@ -330,17 +310,17 @@ class Tensor:
         v = v.flatten(0, 0, (-1, HEAD)).permute(1, 2, 0).named('v_')  # m+wh1 c g n
         return qk.dot(v).named('qkv').T(1, 2).flatten(0, 1).lin(_ + '.output.dense', _ + '.attention.o_proj').named('at')  # cg m+wh0 n
 
-    @dbg
+    @debug
     def rope(self, H: 'Tensor', h: int) -> 'Tensor':
-        ast((self.shape[2], 1, 1, 1), H.shape)
+        asserteq((self.shape[2], 1, 1, 1), H.shape)
         # return Tensor(ggml_rope(GRAPHCTX, self.base, H.base, self.shape[0] // HEAD, 0, h)).named('rope')
         return Tensor(ggml_rope_custom_inplace(GRAPHCTX, self.base, H.base, self.shape[0] // HEAD, 0, h, h, 10000., 1., 1., 1., 32., 1.)).named('rope')
 
-    @dbg
+    @debug
     def rope2(self, H: 'Tensor', W: 'Tensor', h: int, w: int) -> 'Tensor':
         return self[:self.shape[0] // 2].rope(H, h).cat(self[self.shape[0] // 2:].T(1, 2).rope(W, w).T(1, 2), 0).named('rope2')
 
-    @dbg
+    @debug
     def atrope(self, _: str, H: 'Tensor', W: 'Tensor', h: int, w: int, m: int) -> 'Tensor':
         try:
             x = self.lin(_ + '.attention.qkv').flatten(0, 0, (-1, 3))  # cg 3 m+wh n
@@ -360,7 +340,7 @@ class Tensor:
         return qk.dot(v).named('qkv').T(1, 2).flatten(0, 1).lin(_ + '.output.dense', _ + '.attention.o_proj').named('atrope')  # cg m+wh0 n
 
 
-@dbg
+@debug
 def init(model: str, gpu=False) -> None:
     global MODEL, GPU, GGUFCTX, CTX, BACKEND, ALLOC, HEAD, GRAPHCTX
     if model == MODEL and gpu == GPU:
@@ -390,7 +370,7 @@ def init(model: str, gpu=False) -> None:
     HEAD = getkey(GGUFCTX, 'num_attention_heads')
 
 
-@dbg
+@debug
 def deinit() -> None:
     global GGUFCTX, CTX, BACKEND, ALLOC, GRAPHCTX
     if GGUFCTX is None:
@@ -405,7 +385,7 @@ def deinit() -> None:
     GRAPHCTX = GGUFCTX = CTX = BACKEND = ALLOC = None
 
 
-@dbg
+@debug
 def initgraph(y: Tensor) -> None:
     global Y, GF
     if Y == y:
