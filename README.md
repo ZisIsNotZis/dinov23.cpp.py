@@ -9,7 +9,8 @@ A python ggml implementation of dinov2 and dinov3, heavily inspired by [dinov2.c
 
 ## Usage
 ### dinov2
-* `dino2.py <img>...`: Will generate `<img>dino2<C>f` for class vector, `<img>dino2.<H>,<W>,<C>f` for feature map, and `<img>dino2.vis` for PCA(3) RGB visulization (if env var `VIS` non empty)
+* `dino2.py <img>...`: Will generate `<img>dino2<C>f` for class vector (C is channel, e.g. 384 for lower dinov2 model) `<img>dino2.<H>,<W>,<C>f` for feature map (H and W is height and width for feature map, which is definitely smaller than the original image, and usually can be interpolated to original size), and `<img>dino2.vis` for PCA(3) RGB visulization (if env var `VIS` non empty, the file is essentially a JPEG, and vis is just a fancy extension to differentiate from original images)
+* A file named `xxx.aaaf` `xxx.aaa,bbb,cccf` can be easily loaded by numpy using `np.fromfile('<filename>','<extension>')[0]` (0 to remove the leading one element dimension), e.g. `np.fromfile('xxx.aaa,bbb,cccf','aaa,bbb,cccf')[0]`, which is why the file extension looks like this. This is really handy.
 
 ### dinov3
 * `dino3.py <img>...`: Will generate `<img>dino3<C>f` for class vector, `<img>dino3.<H>,<W>,<C>f` for feature map, and `<img>dino3.vis` for PCA(3) RGB visulization (if env var `VIS` non empty)
