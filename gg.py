@@ -1,4 +1,4 @@
-from ctypes import POINTER, c_void_p, c_float, casserteq as ccasserteq, _Pointer
+from ctypes import POINTER, c_void_p, c_float, cast as ccast, _Pointer
 from math import prod
 from logging import info, warning, basicConfig
 from atexit import register
@@ -175,7 +175,7 @@ class Tensor:
         return Tensor(ggml_concat(GRAPHCTX, _.base, self.base, i)).named('rcat')
 
     def asnp(self) -> np.ndarray:
-        return np.lib.stride_tricks.as_strided(np.asarray(ccasserteq(self.base.contents.data, POINTER(c_float * 0)).contents).view(self.asdtype[self.base.contents.type]), self.shape[::-1], self.stride[::-1])
+        return np.lib.stride_tricks.as_strided(np.asarray(ccast(self.base.contents.data, POINTER(c_float * 0)).contents).view(self.asdtype[self.base.contents.type]), self.shape[::-1], self.stride[::-1])
 
     def tonp(self) -> np.ndarray:
         return to_numpy(self.base)
