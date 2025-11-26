@@ -12,23 +12,15 @@ A Python ggml implementation of DINOv2 and DINOv3, heavily inspired by [dinov2.c
 
 
 ## Dependencies  
+- My ggml-python [fork](https://github.com/ZisIsNotZis/ggml-python) (original is outdated)
 - Python 3.12+ (for newer typing syntax)  
-- My ggml-python [fork](https://github.com/ZisIsNotZis/ggml-python) (original is outdated)  
-- Pillow  
+- Pillow
 - scikit-learn  
 
 
 ## Setup  
-Install dependencies via `requirements.txt` (since `pip install .` doesn’t work with `git+https` URLs):  
 ```bash
-pip install -r requirements.txt
-```  
-
-*(Create a `requirements.txt` file with the following content to match dependencies):*  
-```txt
-git+https://github.com/ZisIsNotZis/ggml-python.git
-pillow
-scikit-learn
+pip install dinov23-cpp-py git+https://github.com/ZisIsNotZis/ggml-python.git
 ```  
 
 
@@ -43,7 +35,7 @@ dino2.py <img>...
 **Output Files**:  
 - `<img>dino2<C>f`: Class vector (global feature, `C` = number of channels, e.g., 384 for small models).  
 - `<img>dino2.<H>,<W>,<C>f`: Feature map (local features, `H`/`W` = height/width of the map, smaller than input).  
-- `<img>dino2.vis`: PCA(3) RGB visualization (JPEG) if the `VIS` environment variable is non-empty (e.g., `VIS=1`).  
+- `<img>dino2.vis`: PCA(3) RGB visualization (essentially JPEG) if the `VIS` environment variable is non-empty (e.g., `VIS=1`).  
 
 **Numpy Loading Tip**:  
 Files like `xxx.aaaf` (class vector) or `xxx.aaa,bbb,cccf` (feature map) can be loaded directly with:  
@@ -104,7 +96,7 @@ clsvec, featmap = run(img, "../dinov3-vit7b16-pretrain-lvd1689m-f16.gguf")
 
 
 ## Model Weights  
-Pre-converted GGUF weights are available (conversion script included in the repo).  
+Pre-converted GGUF weights are available (conversion script included in the repo). Quantized models are on work. If https://huggingface.co is hard to access, try mirrors at https://hf-mirror.com/zisisnotzis/dinov3-gguf or https://www.modelscope.cn/models/ziszis/dinov3-gguf.
 
 ### DINOv2  
 | Name | Size | Quantization |  
@@ -147,6 +139,3 @@ Pre-converted GGUF weights are available (conversion script included in the repo
 - DINOv3 feature behavior may be unexpected (potential bug).  
 - DINOv3 currently only supports ViT models.  
 - GPU mode is untested.  
-
-
-All original details (CLI commands, numpy loading, model lists, and limitations) are preserved—this version simply improves readability with structured headings, formatted code blocks, and clear tables.
