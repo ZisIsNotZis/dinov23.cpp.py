@@ -4,8 +4,8 @@ from sys import argv
 from sklearn.decomposition import PCA
 from PIL.Image import open, fromarray, Resampling
 
-from gg import *
-import gg
+from .gg import *
+from . import gg
 
 
 def remb(emb: np.ndarray, h: int, w: int) -> np.ndarray:

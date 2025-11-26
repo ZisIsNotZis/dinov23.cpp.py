@@ -4,8 +4,8 @@ from sys import argv
 from sklearn.decomposition import PCA
 from PIL.Image import open, fromarray, Resampling
 
-from gg import *
-import gg
+from .gg import *
+from . import gg
 
 
 def run(x: np.ndarray, model='dinov3-vits16-pretrain-lvd1689m-f16.gguf', gpu=False) -> tuple[np.ndarray, np.ndarray]:
