@@ -1,0 +1,3 @@
+git+https://github.com/ZisIsNotZis/ggml-python.git
+scikit-learn
+Pillow
