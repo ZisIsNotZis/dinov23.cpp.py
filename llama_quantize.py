@@ -15,7 +15,7 @@ for arg in argv[1:]:
     in_ = GGUFReader(arg)
     out = GGUFWriter(f'{arg.rsplit('-', 1)[0]}-{QUANT[0].name.lower()}.gguf', get(in_.fields['general.architecture']))
     for field in in_.fields.values():
-        if not field.name.startswith('general.'):
+        if not field.name.startswith('general.') and not field.name.startswith('GGUF.'):
             print(field.name, get(field))
             out.add_key_value(field.name, get(field), *field.types)
     for field in in_.tensors:

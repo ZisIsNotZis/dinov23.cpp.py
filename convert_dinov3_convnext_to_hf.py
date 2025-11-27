@@ -70,7 +70,7 @@ def get_transform(resize_size: int = 224):
 
 def get_image_processor(resize_size: int = 224):
     return DINOv3ViTImageProcessorFast(do_resize=True, size={"height": resize_size, "width": resize_size}, resample=2,  # BILINEAR
-    )
+                                       )
 
 
 def convert_old_keys_to_new_keys(state_dict_keys: Optional[dict] = None):

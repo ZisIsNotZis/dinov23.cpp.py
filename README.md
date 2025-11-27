@@ -29,13 +29,13 @@ pip install dinov23-cpp-py git+https://github.com/ZisIsNotZis/ggml-python.git
 ### DINOv2
 Run feature extraction on images with:
 ```bash
-python -m dinov23_cpp_py.dino2 <img>...
+python -m dinov23_cpp_py.dinov2 <img>...
 ```
 
 **Output Files**:
-- `<img>dino2<C>f`: Class vector (global feature, `C` = number of channels, e.g., 384 for small models).
-- `<img>dino2.<H>,<W>,<C>f`: Feature map (local features, `H`/`W` = height/width of the map, smaller than input).
-- `<img>dino2.vis`: PCA(3) RGB visualization (essentially JPEG) if the `VIS` environment variable is non-empty (e.g., `VIS=1`).
+- `<img>dinov2<C>f`: Class vector (global feature, `C` = number of channels, e.g., 384 for small models).
+- `<img>dinov2.<H>,<W>,<C>f`: Feature map (local features, `H`/`W` = height/width of the map, smaller than input).
+- `<img>dinov2.vis`: PCA(3) RGB visualization (essentially JPEG) if the `VIS` environment variable is non-empty (e.g., `VIS=1`).
 
 **Numpy Loading Tip**:
 Files like `xxx.aaaf` (class vector) or `xxx.aaa,bbb,cccf` (feature map) can be loaded directly with:
@@ -51,25 +51,25 @@ feat_map = np.fromfile("xxx.aaa,bbb,cccf", dtype="aaa,bbb,cccf")[0]
 ### DINOv3 VIT
 Run with:
 ```bash
-python -m dinov23_cpp_py.dino3vit <img>...
+python -m dinov23_cpp_py.dinov3vit <img>...
 ```
 
 **Output Files**:
-- `<img>dino3vit<C>f`: Class vector.
-- `<img>dino3vit.<H>,<W>,<C>f`: Feature map.
-- `<img>dino3vit.vis`: PCA(3) RGB visualization (if `VIS` is set).
+- `<img>dinov3vit<C>f`: Class vector.
+- `<img>dinov3vit.<H>,<W>,<C>f`: Feature map.
+- `<img>dinov3vit.vis`: PCA(3) RGB visualization (if `VIS` is set).
 
 
-### DINOv3 Convnext (in work)
+### DINOv3 Convnext
 Run with:
 ```bash
-python -m dinov23_cpp_py.dino3convnext <img>...
+python -m dinov23_cpp_py.dinov3convnext <img>...
 ```
 
 **Output Files**:
-- `<img>dino3convnext<C>f`: Class vector.
-- `<img>dino3convnext.<H>,<W>,<C>f`: Feature map.
-- `<img>dino3convnext.vis`: PCA(3) RGB visualization (if `VIS` is set).
+- `<img>dinov3convnext<C>f`: Class vector.
+- `<img>dinov3convnext.<H>,<W>,<C>f`: Feature map.
+- `<img>dinov3convnext.vis`: PCA(3) RGB visualization (if `VIS` is set).
 
 
 ## Program Usage
@@ -91,7 +91,6 @@ clsvec, featmap = run(img, "../dinov2-with-registers-small-imagenet1k-1-layer-f1
 
 
 ### DINOv3 VIT
-Currently only supports ViT models.
 ```python
 from dinov23_cpp_py.dinov3vit import run
 import numpy as np
@@ -107,8 +106,7 @@ clsvec, featmap = run(img, "../dinov3-vit7b16-pretrain-lvd1689m-f16.gguf")
 ```
 
 
-### DINOv3 Convnext (in work)
-Currently only supports ViT models.
+### DINOv3 Convnext
 ```python
 from dinov23_cpp_py.dinov3convnext import run
 import numpy as np
