@@ -29,7 +29,7 @@ pip install dinov23-cpp-py git+https://github.com/ZisIsNotZis/ggml-python.git
 ### DINOv2
 Run feature extraction on images with:
 ```bash
-dino2.py <img>...
+python -m dinov23_cpp_py.dino2 <img>...
 ```
 
 **Output Files**:
@@ -48,16 +48,28 @@ feat_map = np.fromfile("xxx.aaa,bbb,cccf", dtype="aaa,bbb,cccf")[0]
 ```
 
 
-### DINOv3
-Currently only supports ViT models. Run with:
+### DINOv3 VIT
+Run with:
 ```bash
-dino3.py <img>...
+python -m dinov23_cpp_py.dino3vit <img>...
 ```
 
 **Output Files**:
-- `<img>dino3<C>f`: Class vector.
-- `<img>dino3.<H>,<W>,<C>f`: Feature map.
-- `<img>dino3.vis`: PCA(3) RGB visualization (if `VIS` is set).
+- `<img>dino3vit<C>f`: Class vector.
+- `<img>dino3vit.<H>,<W>,<C>f`: Feature map.
+- `<img>dino3vit.vis`: PCA(3) RGB visualization (if `VIS` is set).
+
+
+### DINOv3 Convnext (in work)
+Run with:
+```bash
+python -m dinov23_cpp_py.dino3convnext <img>...
+```
+
+**Output Files**:
+- `<img>dino3convnext<C>f`: Class vector.
+- `<img>dino3convnext.<H>,<W>,<C>f`: Feature map.
+- `<img>dino3convnext.vis`: PCA(3) RGB visualization (if `VIS` is set).
 
 
 ## Program Usage
@@ -78,10 +90,10 @@ clsvec, featmap = run(img, "../dinov2-with-registers-small-imagenet1k-1-layer-f1
 ```
 
 
-### DINOv3
+### DINOv3 VIT
 Currently only supports ViT models.
 ```python
-from dinov23_cpp_py.dinov3 import run
+from dinov23_cpp_py.dinov3vit import run
 import numpy as np
 
 # Dummy input: shape = (batch_size, height, width, channels)
@@ -95,8 +107,25 @@ clsvec, featmap = run(img, "../dinov3-vit7b16-pretrain-lvd1689m-f16.gguf")
 ```
 
 
+### DINOv3 Convnext (in work)
+Currently only supports ViT models.
+```python
+from dinov23_cpp_py.dinov3convnext import run
+import numpy as np
+
+# Dummy input: shape = (batch_size, height, width, channels)
+# Requirements:
+# - height/width < 224
+# - height/width must be divisible by patch size (16 for DINOv3 ViT)
+img = np.random.randint(0, 256, (8, 224, 224, 3), dtype="B")
+
+# Extract features (class vector + feature map)
+clsvec, featmap = run(img, "../dinov3-convnext-small-pretrain-lvd1689m-f16.gguf")
+```
+
+
 ## Model Weights
-Pre-converted GGUF weights are available (conversion script included in the repo). Quantized models are on work. If https://huggingface.co is hard to access, try mirrors at https://hf-mirror.com/zisisnotzis/dinov3-gguf or https://www.modelscope.cn/models/ziszis/dinov3-gguf.
+Pre-converted GGUF weights are available (conversion script included in the repo). If https://huggingface.co is hard to access, try mirrors at https://hf-mirror.com/zisisnotzis/dinov3-gguf or https://www.modelscope.cn/models/ziszis/dinov3-gguf.
 
 ### DINOv2
 | Name | Size | Quantization |
@@ -119,13 +148,30 @@ Pre-converted GGUF weights are available (conversion script included in the repo
 | [dinov2-with-registers-small-imagenet1k-1-layer-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-small-imagenet1k-1-layer-f16.gguf) | 46.9 MB | f16 |
 
 
-### DINOv3
+### DINOv2 Mostly Q4_0
 | Name | Size | Quantization |
 |------|------|--------------|
-| [dinov3-convnext-base-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-base-pretrain-lvd1689m-f16.gguf) | 175 MB | f16 |
-| [dinov3-convnext-large-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-large-pretrain-lvd1689m-f16.gguf) | 393 MB | f16 |
-| [dinov3-convnext-small-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-small-pretrain-lvd1689m-f16.gguf) | 99.2 MB | f16 |
-| [dinov3-convnext-tiny-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-tiny-pretrain-lvd1689m-f16.gguf) | 55.8 MB | f16 |
+| [dinov2-base-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-base-q4_0.gguf) | 176 MB / 3.5 | mostly q4_0 |
+| [dinov2-base-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-base-imagenet1k-1-layer-q4_0.gguf) | 179 MB / 3.5 | mostly q4_0 |
+| [dinov2-giant-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-giant-q4_0.gguf) | 2.28 GB / 3.5 | mostly q4_0 |
+| [dinov2-giant-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-giant-imagenet1k-1-layer-q4_0.gguf) | 2.29 GB / 3.5 | mostly q4_0 |
+| [dinov2-large-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-large-q4_0.gguf) | 612 MB / 3.5 | mostly q4_0 |
+| [dinov2-large-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-large-imagenet1k-1-layer-q4_0.gguf) | 616 MB / 3.5 | mostly q4_0 |
+| [dinov2-small-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-small-q4_0.gguf) | 45.3 MB / 3.5 | mostly q4_0 |
+| [dinov2-small-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-small-imagenet1k-1-layer-q4_0.gguf) | 46.9 MB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-base-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-base-q4_0.gguf) | 176 MB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-base-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-base-imagenet1k-1-layer-q4_0.gguf) | 179 MB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-giant-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-giant-q4_0.gguf) | 2.28 GB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-giant-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-giant-imagenet1k-1-layer-q4_0.gguf) | 2.29 GB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-large-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-large-q4_0.gguf) | 612 MB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-large-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-large-imagenet1k-1-layer-q4_0.gguf) | 616 MB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-small-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-small-q4_0.gguf) | 45.3 MB / 3.5 | mostly q4_0 |
+| [dinov2-with-registers-small-imagenet1k-1-layer-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov2-with-registers-small-imagenet1k-1-layer-q4_0.gguf) | 46.9 MB / 3.5 | mostly q4_0 |
+
+
+### DINOv3 VIT
+| Name | Size | Quantization |
+|------|------|--------------|
 | [dinov3-vit7b16-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vit7b16-pretrain-lvd1689m-f16.gguf) | 13.4 GB | f16 |
 | [dinov3-vit7b16-pretrain-sat493m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vit7b16-pretrain-sat493m-f16.gguf) | 13.4 GB | f16 |
 | [dinov3-vitb16-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vitb16-pretrain-lvd1689m-f16.gguf) | 172 MB | f16 |
@@ -136,7 +182,37 @@ Pre-converted GGUF weights are available (conversion script included in the repo
 | [dinov3-vits16plus-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vits16plus-pretrain-lvd1689m-f16.gguf) | 57.6 MB | f16 |
 
 
+### DINOv3 VIT Mostly Q4_0
+| Name | Size | Quantization |
+|------|------|--------------|
+| [dinov3-vit7b16-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vit7b16-pretrain-lvd1689m-q4_0.gguf) | 13.4 GB / 3.5 | mostly q4_0 |
+| [dinov3-vit7b16-pretrain-sat493m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vit7b16-pretrain-sat493m-q4_0.gguf) | 13.4 GB / 3.5 | mostly q4_0 |
+| [dinov3-vitb16-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vitb16-pretrain-lvd1689m-q4_0.gguf) | 172 MB / 3.5 | mostly q4_0 |
+| [dinov3-vith16plus-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vith16plus-pretrain-lvd1689m-q4_0.gguf) | 1.68 GB / 3.5 | mostly q4_0 |
+| [dinov3-vitl16-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vitl16-pretrain-lvd1689m-q4_0.gguf) | 607 MB / 3.5 | mostly q4_0 |
+| [dinov3-vitl16-pretrain-sat493m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vitl16-pretrain-sat493m-q4_0.gguf) | 607 MB / 3.5 | mostly q4_0 |
+| [dinov3-vits16-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vits16-pretrain-lvd1689m-q4_0.gguf) | 43.3 MB / 3.5 | mostly q4_0 |
+| [dinov3-vits16plus-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-vits16plus-pretrain-lvd1689m-q4_0.gguf) | 57.6 MB / 3.5 | mostly q4_0 |
+
+
+### DINOv3 Convnext
+| Name | Size | Quantization |
+|------|------|--------------|
+| [dinov3-convnext-base-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-base-pretrain-lvd1689m-f16.gguf) | 175 MB | f16 |
+| [dinov3-convnext-large-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-large-pretrain-lvd1689m-f16.gguf) | 393 MB | f16 |
+| [dinov3-convnext-small-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-small-pretrain-lvd1689m-f16.gguf) | 99.2 MB | f16 |
+| [dinov3-convnext-tiny-pretrain-lvd1689m-f16.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-tiny-pretrain-lvd1689m-f16.gguf) | 55.8 MB | f16 |
+
+
+### DINOv3 Convnext Mostly Q4_0
+| Name | Size | Quantization |
+|------|------|--------------|
+| [dinov3-convnext-base-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-base-pretrain-lvd1689m-q4_0.gguf) | 175 MB / 3.5 | mostly q4_0 |
+| [dinov3-convnext-large-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-large-pretrain-lvd1689m-q4_0.gguf) | 393 MB / 3.5 | mostly q4_0 |
+| [dinov3-convnext-small-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-small-pretrain-lvd1689m-q4_0.gguf) | 99.2 MB / 3.5 | mostly q4_0 |
+| [dinov3-convnext-tiny-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-tiny-pretrain-lvd1689m-q4_0.gguf) | 55.8 MB / 3.5 | mostly q4_0 |
+
+
 ## Notes
-- DINOv3 feature behavior may be unexpected (potential bug).
-- DINOv3 currently only supports ViT models.
+- DINOv3 VIT feature looks wired (potential bug).
 - GPU mode is untested.
