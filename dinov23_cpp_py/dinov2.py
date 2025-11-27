@@ -18,9 +18,9 @@ def run(x: np.ndarray, model=getenv('MODEL', '../hf/dinov2-with-registers-small-
     global SHAPE, X, Y, IMGSZ, PATCHSZ
     gg.init(model, gpu)
     if x.shape != SHAPE:
-        layer = getkey(gg.GGUFCTX, 'num_hidden_layers')
-        IMGSZ = getkey(gg.GGUFCTX, 'img_size')
-        PATCHSZ = getkey(gg.GGUFCTX, 'patch_size')
+        layer = getint('num_hidden_layers')
+        IMGSZ = getint('img_size')
+        PATCHSZ = getint('patch_size')
         X = Tensor(x.transpose(0, 3, 1, 2).shape[::-1]).named('x')
         Y = X.conv2dskp0(Tensor('embeddings.patch_embeddings.projection.weight')).add_(Tensor('embeddings.patch_embeddings.projection.bias')).flatten(0, 1).T().cont()
         EMB = Tensor((Y.shape[0], 1 + Y.shape[1])).named('emb')

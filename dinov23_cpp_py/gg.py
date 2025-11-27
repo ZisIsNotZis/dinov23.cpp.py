@@ -2,7 +2,7 @@ from ctypes import POINTER, c_void_p, c_float, cast as ccast, _Pointer
 from math import prod
 from logging import info, warning, basicConfig
 from atexit import register
-from functools import wraps
+from functools import wraps, lru_cache
 from os import getenv
 
 from ggml import *
@@ -36,12 +36,14 @@ def tape[**P, *V](f: Callable[P, Tape[*V]]) -> Callable[P, 'Tensor']:
         a = t[0](GRAPHCTX, *t[1:])
         if getenv('TAPE'):
             print('_%s=%s(%s)' % (a.contents.data, t[0].__name__, ','.join(f'_{i.contents.data}' if isinstance(i, _Pointer) else str(i) for i in t[1:])))
-        return Tensor(a).named(t[0].__name__[5:].split('_')[0] + '(' + ','.join(i.contents.name.decode().split('.')[-1] for i in t if isinstance(i, _Pointer)) + ')')
+        if not any(i is a for i in t):
+            Tensor(a).named(t[0].__name__.split('_')[1]+'('+','.join(i.contents.name.decode().split('.')[-1] for i in t if isinstance(i, _Pointer))+')')
+        return Tensor(a)
 
     return tape
 
 
-def id(ctx: ggml_context_p, a: ggml_tensor_p, *_) -> ggml_tensor_p:
+def id(_: ggml_context_p, a: ggml_tensor_p, *__) -> ggml_tensor_p:
     return a
 
 
@@ -49,20 +51,34 @@ def asserteq[T](a: T, b: T) -> None:
     assert a == b, (a, b)
 
 
-def getkey(ctx_gguf: gguf_context_p, key: str) -> int:
-    if (t := gguf_find_key(ctx_gguf, key.encode())) < 0:
+def getint(key: str, dft: int | None = None) -> int:
+    if (t := gguf_find_key(GGUFCTX, key.encode())) < 0:
+        if dft is not None:
+            return dft
         raise KeyError(key)
-    return gguf_get_val_i32(ctx_gguf, t) if gguf_get_kv_type(ctx_gguf, t) == GGUF_TYPE_INT32 else gguf_get_val_u32(ctx_gguf, t)
+    return gguf_get_val_i32(GGUFCTX, t) if gguf_get_kv_type(GGUFCTX, t) == GGUF_TYPE_INT32 else gguf_get_val_u32(GGUFCTX, t)
+
+
+def getfloat(key: str, dft: float | None = None) -> float:
+    if (t := gguf_find_key(GGUFCTX, key.encode())) < 0:
+        if dft is not None:
+            return dft
+        raise KeyError(key)
+    return gguf_get_val_f32(GGUFCTX, t) if gguf_get_kv_type(GGUFCTX, t) == GGUF_TYPE_FLOAT32 else gguf_get_val_f64(GGUFCTX, t)
+
+
+def getstr(key: str, dft: str | None = None) -> str:
+    if (t := gguf_find_key(GGUFCTX, key.encode())) < 0:
+        if dft is not None:
+            return dft
+        raise KeyError(key)
+    return gguf_get_val_str(GGUFCTX, t).decode()
 
 
 def getensor(ctx: ggml_context_p, tensor: str | bytes) -> ggml_tensor_p:
+    assert ggml_get_tensor(ctx, b'layer.0.mlp.up_proj.weight')
+    print('yes')
     if not (t := ggml_get_tensor(ctx, (tensor.encode() if isinstance(tensor, str) else tensor))):
-        raise KeyError(tensor)
-    return t
-
-
-def graphgetensor(gf: ggml_cgraph_p, tensor: str | bytes) -> ggml_tensor_p:
-    if not (t := ggml_graph_get_tensor(gf, (tensor.encode() if isinstance(tensor, str) else tensor))):
         raise KeyError(tensor)
     return t
 
@@ -105,8 +121,8 @@ class Tensor:
     def stride(self) -> tuple[int, int, int, int]:
         return tuple[int, int, int, int](map(int, self.base.contents.nb))
 
+    @log
     def named(self, name: str) -> 'Tensor':
-        ggml_set_name(self.base, name.encode())
         return self
 
     @log
@@ -221,6 +237,20 @@ class Tensor:
         return ggml_silu_inplace, self.base
 
     @tape
+    def gelu(self) -> Tape:
+        return ggml_gelu, self.base
+
+    @tape
+    def silu(self) -> Tape:
+        return ggml_silu, self.base
+
+    def act(self) -> 'Tensor':
+        return getattr(self, ACT)()
+
+    def act_(self) -> 'Tensor':
+        return getattr(self, ACT + '_')()
+
+    @tape
     def softmax(self, scale) -> Tape2[float, float]:
         return ggml_soft_max_ext, self.base, None, scale, 0.
 
@@ -253,6 +283,10 @@ class Tensor:
     def mul_(self, a: 'Tensor') -> Tape2:
         self.expandshape(a)
         return ggml_mul_inplace, self.untranspose().base, a.untranspose().base
+
+    @tape
+    def neg(self) -> Tape:
+        return ggml_neg, self.cont().base
 
     @log
     @tape
@@ -316,8 +350,7 @@ class Tensor:
     @log
     @tape
     def pool2d(self) -> Tape[int, int, int, int, int, float, float]:
-        self = self.permute(2, 0, 1)
-        return ggml_pool_2d, self.base, GGML_OP_POOL_AVG, self.shape[0], self.shape[1], 1, 1, 0., 0.
+        return ggml_pool_2d, self.permute(2, 0, 1).base, GGML_OP_POOL_AVG, self.shape[1], self.shape[2], 1, 1, 0., 0.
 
     @tape
     def norm_(self) -> Tape[float]:
@@ -330,12 +363,15 @@ class Tensor:
     @tape
     def rope(self, H: 'Tensor', h: int) -> Tape2[int, int, int]:
         asserteq((self.shape[2], 1, 1, 1), H.shape)
-        return ggml_rope, self.base, H.base, self.shape[0] // HEAD, 2, h
-        # return ggml_rope_custom_inplace, self.base, H.base, self.shape[0] // HEAD, 0, h, h, 10000., 1., 1., 1., 32., 1.
+        return ggml_rope, self.base, H.base, self.shape[0] // HEAD, 2, h  # return ggml_rope_custom_inplace, self.base, H.base, self.shape[0] // HEAD, 0, h, h, 10000., 1., 1., 1., 32., 1.
 
     @log
-    def rope2(self, H: 'Tensor', W: 'Tensor', h: int, w: int) -> 'Tensor':
+    def rope2d(self, H: 'Tensor', W: 'Tensor', h: int, w: int) -> 'Tensor':
         return self[:self.shape[0] // 2].rope(H, h).cat(self[self.shape[0] // 2:].T(1, 2).rope(W, w).T(1, 2), 0).named('rope2')
+
+    @log
+    def rope2d2(self, COS: 'Tensor', SIN: 'Tensor') -> 'Tensor':
+        return self.mul(COS).add_(self[self.shape[0] // 2:].neg().cat(self[:self.shape[0] // 2], 0).mul_(SIN))
 
     def scale_(self, key: str) -> 'Tensor':
         return self.mul_(Tensor(key + '.weight')).add_(Tensor(key + '.bias')).named('scale')
@@ -369,21 +405,23 @@ class Tensor:
 
     @log
     def mlp(self, key: str) -> 'Tensor':
-        return self.lin(key + '1', key + 'in', key + 'up_proj').gelu_().lin(key + '2', key + 'out', key + 'down_proj').named('mlp')
+        return self.lin(key + '1', key + 'in', key + 'up_proj').act_().lin(key + '2', key + 'out', key + 'down_proj').named('mlp')
 
     @log
     def swiglu(self, key: str) -> 'Tensor':
-        x = self.lin(key + '.fc1', key + '.weights_in', key + '.up_proj')
-        a = x[:x.shape[0] // 2].silu_()
-        b = x[x.shape[0] // 2:]
-        return a.mul_(b).lin(key + '.fc2', key + '.weights_out', key + '.down_proj').named('swiglu')
+        a = self.lin(key + '1', key + 'in', key + 'up_proj')
+        try:
+            b = self.lin(key + 'gate_proj')
+        except KeyError:
+            b = a[:a.shape[0] // 2].act_()
+            a = a[a.shape[0] // 2:]
+        return a.mul_(b).lin(key + '2', key + 'out', key + 'down_proj').named('swiglu')
 
     def mlpOrSwiglu(self, key: str):
         try:
-            return self.mlp(key)
-        except AssertionError:
-            warning('mlp no found, try swiglu')
             return self.swiglu(key)
+        except AssertionError:
+            return self.mlp(key)
 
     @log
     def at(self, key: str) -> 'Tensor':
@@ -415,17 +453,37 @@ class Tensor:
             q = self.lin(key + '.attention.q_proj').named('q')  # cg m+wh n
             k = self.lin(key + '.attention.k_proj').named('k')  # cg m+wh n
             v = self.lin(key + '.attention.v_proj').named('v')  # cg m+wh n
-        q = q[:, m:].flatten(1, 1, (-1, H.shape[0])).rope2(H, W, h, w).flatten(1, 2).rcat(q[:, :m], 1)
+        q = q[:, m:].flatten(1, 1, (-1, H.shape[0])).rope2d(H, W, h, w).flatten(1, 2).rcat(q[:, :m], 1)
         q = q.flatten(0, 0, (-1, HEAD)).T(1, 2).named('q_')  # c m+wh0 g n
-        k = k[:, m:].flatten(1, 1, (-1, H.shape[0])).rope2(H, W, h, w).flatten(1, 2).rcat(k[:, :m], 1)
+        k = k[:, m:].flatten(1, 1, (-1, H.shape[0])).rope2d(H, W, h, w).flatten(1, 2).rcat(k[:, :m], 1)
         k = k.flatten(0, 0, (-1, HEAD)).T(1, 2).named('k_')  # c m+wh1 g n
+        qk = q.dot(k).softmax(1 / q.shape[0] ** .5).named('qk')  # m+wh1 m+wh0 g n
+        v = v.flatten(0, 0, (-1, HEAD)).permute(1, 2, 0).named('v_')  # m+wh1 c g n
+        return qk.dot(v).named('qkv').T(1, 2).flatten(0, 1).lin(key + '.output.dense', key + '.attention.o_proj').named('atrope')  # cg m+wh0 n
+
+    @log
+    def atrope2(self, key: str, COS: 'Tensor', SIN: 'Tensor') -> 'Tensor':
+        try:
+            x = self.lin(key + '.attention.qkv').flatten(0, 0, (-1, 3))  # cg 3 m+wh n
+            q = x[:, 0].named('q')  # cg m+wh n
+            k = x[:, 1].named('k')  # cg m+wh n
+            v = x[:, 2].named('v')  # cg m+wh n
+            warning('%s.attention.qkv no found, try q/k/v_proj')
+        except KeyError:
+            q = self.lin(key + '.attention.q_proj').named('q')  # cg m+wh n
+            k = self.lin(key + '.attention.k_proj').named('k')  # cg m+wh n
+            v = self.lin(key + '.attention.v_proj').named('v')  # cg m+wh n
+        q = q.flatten(0, 0, (-1, HEAD)).T(1, 2)
+        q = q[:, -COS.shape[1]:].rope2d2(COS, SIN).rcat(q[:, :-COS.shape[1]], 1).named('q_')  # c m+wh0 g n
+        k = k.flatten(0, 0, (-1, HEAD)).T(1, 2)
+        k = k[:, -COS.shape[1]:].rope2d2(COS, SIN).rcat(k[:, :-COS.shape[1]], 1).named('k_')  # c m+wh1 g n
         qk = q.dot(k).softmax(1 / q.shape[0] ** .5).named('qk')  # m+wh1 m+wh0 g n
         v = v.flatten(0, 0, (-1, HEAD)).permute(1, 2, 0).named('v_')  # m+wh1 c g n
         return qk.dot(v).named('qkv').T(1, 2).flatten(0, 1).lin(key + '.output.dense', key + '.attention.o_proj').named('atrope')  # cg m+wh0 n
 
 
 def init(model: str, gpu=False) -> None:
-    global MODEL, GPU, GGUFCTX, CTX, BACKEND, ALLOC, HEAD, GRAPHCTX
+    global MODEL, GPU, GGUFCTX, CTX, BACKEND, ALLOC, HEAD, ACT, GRAPHCTX
     if model == MODEL and gpu == GPU:
         return
     MODEL = model
@@ -450,10 +508,8 @@ def init(model: str, gpu=False) -> None:
     ggml_free(tmpctx.contents)
     ALLOC = ggml_gallocr_new(ggml_backend_get_default_buffer_type(BACKEND))
     GRAPHCTX = CTX  # ggml_init(ggml_init_params(ggml_tensor_overhead() * GGML_DEFAULT_GRAPH_SIZE + ggml_graph_overhead(), None, True))
-    try:
-        HEAD = getkey(GGUFCTX, 'num_attention_heads')
-    except KeyError:
-        pass
+    HEAD = getint('num_attention_heads', 0)
+    ACT = getstr('hidden_act', '').lower()
 
 
 def deinit() -> None:
@@ -491,8 +547,8 @@ BACKEND: ggml_backend_t = None
 ALLOC: ggml_gallocr = None
 GRAPHCTX: ggml_context_p = None
 TOUCH = set[bytes]()
-HEAD = 0
-MODEL = ''
+HEAD = -1
+ACT = MODEL = 'undef'
 GPU = False
 Y = tuple[Tensor]()
 register(deinit)
