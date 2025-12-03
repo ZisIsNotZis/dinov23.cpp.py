@@ -26,7 +26,7 @@ pip install dinov23-cpp-py git+https://github.com/ZisIsNotZis/ggml-python.git
 
 ## CLI Usage
 
-### DINOv2
+### DINOv2 (currently works best)
 Run feature extraction on images with:
 ```bash
 python -m dinov23_cpp_py.dinov2 <img>...
@@ -48,7 +48,7 @@ feat_map = np.fromfile("xxx.aaa,bbb,cccf", dtype="aaa,bbb,cccf")[0]
 ```
 
 
-### DINOv3 VIT
+### DINOv3 VIT (looks wired)
 Run with:
 ```bash
 python -m dinov23_cpp_py.dinov3vit <img>...
@@ -60,7 +60,19 @@ python -m dinov23_cpp_py.dinov3vit <img>...
 - `<img>dinov3vit.vis`: PCA(3) RGB visualization (if `VIS` is set).
 
 
-### DINOv3 Convnext
+### DINOv3 VIT cos/sin debug variant (also looks wired)
+Run with:
+```bash
+python -m dinov23_cpp_py.dinov3vitcosin <img>...
+```
+
+**Output Files**:
+- `<img>dinov3vitcosin<C>f`: Class vector.
+- `<img>dinov3vitcosin.<H>,<W>,<C>f`: Feature map.
+- `<img>dinov3vitcosin.vis`: PCA(3) RGB visualization (if `VIS` is set).
+
+
+### DINOv3 Convnext (looks fine, but convnext pools a lot, so not suitable for segmentation)
 Run with:
 ```bash
 python -m dinov23_cpp_py.dinov3convnext <img>...
@@ -211,6 +223,11 @@ Pre-converted GGUF weights are available (conversion script included in the repo
 | [dinov3-convnext-tiny-pretrain-lvd1689m-q4_0.gguf](https://huggingface.co/zisisnotzis/dinov3-gguf/blob/main/dinov3-convnext-tiny-pretrain-lvd1689m-q4_0.gguf) | 55.8 MB / 3.5 | mostly q4_0 |
 
 
+## Env var
+* NOINPLACE: If non empty, replaces all inplace operation with out-of-place one, for debugging
+* SZ: Force image (longer side) size. All programs will try to preserve aspect ratio.
+
+
 ## Notes
-- DINOv3 VIT feature looks wired (potential bug).
+- Visulization anomally at (currently bottom-right) corner is probably a known problem w.r.t. ViT. Shound't matter that much in supervised tasks?
 - GPU mode is untested.
