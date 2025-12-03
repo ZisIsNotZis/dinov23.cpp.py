@@ -38,7 +38,7 @@ SHAPE = ()
 PATCHSZ = 1
 if __name__ == '__main__':
     X = [open(i) for i in argv[1:]]
-    s = max(max(i.size) for i in X)
+    s = int(getenv('SZ', max(max(i.size) for i in X)))//PATCHSZ*PATCHSZ
     r = np.exp(sum(np.log(i.size[1] / i.size[0]) for i in X) / len(X))
     w, h = (int(s / r / PATCHSZ) * PATCHSZ, s) if r > 1 else (s, int(s * r / PATCHSZ) * PATCHSZ)
     X = np.stack([np.asarray(i.resize((w, h), Resampling.BOX))[..., :3] for i in X])

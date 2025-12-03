@@ -15,11 +15,10 @@ def remb(emb: np.ndarray, h: int, w: int) -> np.ndarray:
 
 
 def run(x: np.ndarray, model=getenv('MODEL', '../hf/dinov2-with-registers-small-imagenet1k-1-layer-f16.gguf'), gpu=False) -> tuple[np.ndarray, np.ndarray]:
-    global SHAPE, X, Y, IMGSZ, PATCHSZ
+    global SHAPE, X, Y, PATCHSZ
     gg.init(model, gpu)
     if x.shape != SHAPE:
         layer = getint('num_hidden_layers')
-        IMGSZ = getint('img_size')
         PATCHSZ = getint('patch_size')
         X = Tensor(x.transpose(0, 3, 1, 2).shape[::-1]).named('x')
         Y = X.conv2dskp0(Tensor('embeddings.patch_embeddings.projection.weight')).add_(Tensor('embeddings.patch_embeddings.projection.bias')).flatten(0, 1).T().cont()
@@ -31,23 +30,23 @@ def run(x: np.ndarray, model=getenv('MODEL', '../hf/dinov2-with-registers-small-
             pass
         for i in range(layer):
             Y = Y.normscale(f'encoder.layer.{i}.norm1').at(f'encoder.layer.{i}.attention').mul_(Tensor(f'encoder.layer.{i}.layer_scale1.lambda1')).add_(Y)
-            Y = (Tensor.mlp if layer != 40 else Tensor.swiglu)(Y.normscale(f'encoder.layer.{i}.norm2'), f'encoder.layer.{i}.mlp.fc').mul_(Tensor(f'encoder.layer.{i}.layer_scale2.lambda1')).add_(Y)
+            Y = (Tensor.mlp if layer != 40 else lambda x, w: x.swiglu(w, 'silu'))(Y.normscale(f'encoder.layer.{i}.norm2'), f'encoder.layer.{i}.mlp.fc').mul_(Tensor(f'encoder.layer.{i}.layer_scale2.lambda1')).add_(Y)
         Y = Y.normscale_('layernorm').named('y')
         initgraph(Y)
         EMB.setnp(remb(Tensor('embeddings.position_embeddings').asnp()[0, 0], x.shape[1] // PATCHSZ, x.shape[2] // PATCHSZ))
     X.setnp((x - np.array([123.675, 116.28, 103.53], 'f')).transpose(0, 3, 1, 2) / np.array([58.395, 57.12, 57.375], 'f')[:, None, None])
     gg.run()
     y = Y.asnp()
-    return y[0, :, -x.shape[1] * x.shape[2] // PATCHSZ ** 2 - 1], y[0, :, -x.shape[1] * x.shape[2] // PATCHSZ ** 2:].reshape(y.shape[1], x.shape[1] // PATCHSZ, -1, y.shape[3])
+    return y[0, :, -(x.shape[1] * x.shape[2] // PATCHSZ ** 2) - 1], y[0, :, -(x.shape[1] * x.shape[2] // PATCHSZ ** 2):].reshape(y.shape[1], x.shape[1] // PATCHSZ, -1, y.shape[3])
 
 
 SHAPE = ()
-IMGSZ = 504
 PATCHSZ = 14
 if __name__ == '__main__':
     X = [open(i) for i in argv[1:]]
+    s = int(getenv('SZ', max(max(i.size)for i in X)))//PATCHSZ*PATCHSZ
     r = np.exp(sum(np.log(i.size[1] / i.size[0]) for i in X) / len(X))
-    w, h = (int(IMGSZ / r / PATCHSZ) * PATCHSZ, IMGSZ) if r > 1 else (IMGSZ, int(IMGSZ * r / PATCHSZ) * PATCHSZ)
+    w, h = (int(s / r / PATCHSZ) * PATCHSZ, s) if r > 1 else (s, int(s * r / PATCHSZ) * PATCHSZ)
     X = np.stack([np.asarray(i.resize((w, h), Resampling.BOX))[..., :3] for i in X])
     Z, Y = run(X)
     for i, y, z in zip(argv[1:], Y, Z):

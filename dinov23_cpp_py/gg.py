@@ -36,8 +36,6 @@ def tape[**P, *V](f: Callable[P, Tape[*V]]) -> Callable[P, 'Tensor']:
         a = t[0](GRAPHCTX, *t[1:])
         if getenv('TAPE'):
             print('_%s=%s(%s)' % (a.contents.data, t[0].__name__, ','.join(f'_{i.contents.data}' if isinstance(i, _Pointer) else str(i) for i in t[1:])))
-        if not any(i is a for i in t):
-            Tensor(a).named(t[0].__name__.split('_')[1]+'('+','.join(i.contents.name.decode().split('.')[-1] for i in t if isinstance(i, _Pointer))+')')
         return Tensor(a)
 
     return tape
@@ -51,6 +49,7 @@ def asserteq[T](a: T, b: T) -> None:
     assert a == b, (a, b)
 
 
+@log
 def getint(key: str, dft: int | None = None) -> int:
     if (t := gguf_find_key(GGUFCTX, key.encode())) < 0:
         if dft is not None:
@@ -59,6 +58,7 @@ def getint(key: str, dft: int | None = None) -> int:
     return gguf_get_val_i32(GGUFCTX, t) if gguf_get_kv_type(GGUFCTX, t) == GGUF_TYPE_INT32 else gguf_get_val_u32(GGUFCTX, t)
 
 
+@log
 def getfloat(key: str, dft: float | None = None) -> float:
     if (t := gguf_find_key(GGUFCTX, key.encode())) < 0:
         if dft is not None:
@@ -76,8 +76,6 @@ def getstr(key: str, dft: str | None = None) -> str:
 
 
 def getensor(ctx: ggml_context_p, tensor: str | bytes) -> ggml_tensor_p:
-    assert ggml_get_tensor(ctx, b'layer.0.mlp.up_proj.weight')
-    print('yes')
     if not (t := ggml_get_tensor(ctx, (tensor.encode() if isinstance(tensor, str) else tensor))):
         raise KeyError(tensor)
     return t
@@ -121,7 +119,6 @@ class Tensor:
     def stride(self) -> tuple[int, int, int, int]:
         return tuple[int, int, int, int](map(int, self.base.contents.nb))
 
-    @log
     def named(self, name: str) -> 'Tensor':
         return self
 
@@ -226,7 +223,7 @@ class Tensor:
 
     @staticmethod
     def fromnp(x: np.ndarray) -> 'Tensor':
-        return Tensor(from_numpy(x, GRAPHCTX)).named('fromnp')
+        return Tensor(from_numpy(x, GRAPHCTX))
 
     @tape
     def gelu_(self) -> Tape:
@@ -244,11 +241,11 @@ class Tensor:
     def silu(self) -> Tape:
         return ggml_silu, self.base
 
-    def act(self) -> 'Tensor':
-        return getattr(self, ACT)()
+    def act(self, act='') -> 'Tensor':
+        return getattr(self, act or ACT)()
 
-    def act_(self) -> 'Tensor':
-        return getattr(self, ACT + '_')()
+    def act_(self, act='') -> 'Tensor':
+        return getattr(self, act or ACT + '_')()
 
     @tape
     def softmax(self, scale) -> Tape2[float, float]:
@@ -360,18 +357,22 @@ class Tensor:
     def norm(self) -> Tape[float]:
         return ggml_norm, self.base, 1e-6
 
+    @log
+    def rotatehalf(self) -> 'Tensor':
+        return self[self.shape[0] // 2:].neg().cat(self[:self.shape[0] // 2], 0)
+
     @tape
     def rope(self, H: 'Tensor', h: int) -> Tape2[int, int, int]:
         asserteq((self.shape[2], 1, 1, 1), H.shape)
-        return ggml_rope, self.base, H.base, self.shape[0] // HEAD, 2, h  # return ggml_rope_custom_inplace, self.base, H.base, self.shape[0] // HEAD, 0, h, h, 10000., 1., 1., 1., 32., 1.
+        return ggml_rope_custom_inplace, self.base, H.base, self.shape[0] // HEAD, 0, h, h, 10000., 1., 1., 1., 32., 1.
 
     @log
     def rope2d(self, H: 'Tensor', W: 'Tensor', h: int, w: int) -> 'Tensor':
         return self[:self.shape[0] // 2].rope(H, h).cat(self[self.shape[0] // 2:].T(1, 2).rope(W, w).T(1, 2), 0).named('rope2')
 
     @log
-    def rope2d2(self, COS: 'Tensor', SIN: 'Tensor') -> 'Tensor':
-        return self.mul(COS).add_(self[self.shape[0] // 2:].neg().cat(self[:self.shape[0] // 2], 0).mul_(SIN))
+    def rope2dcosin(self, COS: 'Tensor', SIN: 'Tensor') -> 'Tensor':
+        return self.mul(COS).add_(self.rotatehalf().mul_(SIN))
 
     def scale_(self, key: str) -> 'Tensor':
         return self.mul_(Tensor(key + '.weight')).add_(Tensor(key + '.bias')).named('scale')
@@ -404,16 +405,16 @@ class Tensor:
         raise
 
     @log
-    def mlp(self, key: str) -> 'Tensor':
-        return self.lin(key + '1', key + 'in', key + 'up_proj').act_().lin(key + '2', key + 'out', key + 'down_proj').named('mlp')
+    def mlp(self, key: str, act='') -> 'Tensor':
+        return self.lin(key + '1', key + 'in', key + 'up_proj').act_(act).lin(key + '2', key + 'out', key + 'down_proj').named('mlp')
 
     @log
-    def swiglu(self, key: str) -> 'Tensor':
+    def swiglu(self, key: str, act='') -> 'Tensor':
         a = self.lin(key + '1', key + 'in', key + 'up_proj')
         try:
             b = self.lin(key + 'gate_proj')
         except KeyError:
-            b = a[:a.shape[0] // 2].act_()
+            b = a[:a.shape[0] // 2].act_(act)
             a = a[a.shape[0] // 2:]
         return a.mul_(b).lin(key + '2', key + 'out', key + 'down_proj').named('swiglu')
 
@@ -462,7 +463,7 @@ class Tensor:
         return qk.dot(v).named('qkv').T(1, 2).flatten(0, 1).lin(key + '.output.dense', key + '.attention.o_proj').named('atrope')  # cg m+wh0 n
 
     @log
-    def atrope2(self, key: str, COS: 'Tensor', SIN: 'Tensor') -> 'Tensor':
+    def atropecosin(self, key: str, COS: 'Tensor', SIN: 'Tensor') -> 'Tensor':
         try:
             x = self.lin(key + '.attention.qkv').flatten(0, 0, (-1, 3))  # cg 3 m+wh n
             q = x[:, 0].named('q')  # cg m+wh n
@@ -474,9 +475,9 @@ class Tensor:
             k = self.lin(key + '.attention.k_proj').named('k')  # cg m+wh n
             v = self.lin(key + '.attention.v_proj').named('v')  # cg m+wh n
         q = q.flatten(0, 0, (-1, HEAD)).T(1, 2)
-        q = q[:, -COS.shape[1]:].rope2d2(COS, SIN).rcat(q[:, :-COS.shape[1]], 1).named('q_')  # c m+wh0 g n
+        q = q[:, -COS.shape[1]:].rope2dcosin(COS, SIN).rcat(q[:, :-COS.shape[1]], 1).named('q_')  # c m+wh0 g n
         k = k.flatten(0, 0, (-1, HEAD)).T(1, 2)
-        k = k[:, -COS.shape[1]:].rope2d2(COS, SIN).rcat(k[:, :-COS.shape[1]], 1).named('k_')  # c m+wh1 g n
+        k = k[:, -COS.shape[1]:].rope2dcosin(COS, SIN).rcat(k[:, :-COS.shape[1]], 1).named('k_')  # c m+wh1 g n
         qk = q.dot(k).softmax(1 / q.shape[0] ** .5).named('qk')  # m+wh1 m+wh0 g n
         v = v.flatten(0, 0, (-1, HEAD)).permute(1, 2, 0).named('v_')  # m+wh1 c g n
         return qk.dot(v).named('qkv').T(1, 2).flatten(0, 1).lin(key + '.output.dense', key + '.attention.o_proj').named('atrope')  # cg m+wh0 n
@@ -509,7 +510,7 @@ def init(model: str, gpu=False) -> None:
     ALLOC = ggml_gallocr_new(ggml_backend_get_default_buffer_type(BACKEND))
     GRAPHCTX = CTX  # ggml_init(ggml_init_params(ggml_tensor_overhead() * GGML_DEFAULT_GRAPH_SIZE + ggml_graph_overhead(), None, True))
     HEAD = getint('num_attention_heads', 0)
-    ACT = getstr('hidden_act', '').lower()
+    ACT = getstr('hidden_act', 'gelu').lower()
 
 
 def deinit() -> None:
@@ -522,8 +523,9 @@ def deinit() -> None:
     ggml_free(CTX)
     gguf_free(GGUFCTX)
     GRAPHCTX = GGUFCTX = CTX = BACKEND = ALLOC = None
-    warning('%s no touch', TOUCH)
-    TOUCH.clear()
+    if TOUCH:
+        warning('%s no use', TOUCH)
+        TOUCH.clear()
 
 
 def initgraph(*y: Tensor) -> None:
@@ -548,13 +550,12 @@ ALLOC: ggml_gallocr = None
 GRAPHCTX: ggml_context_p = None
 TOUCH = set[bytes]()
 HEAD = -1
-ACT = MODEL = 'undef'
+ACT = MODEL = 'undefined'
 GPU = False
 Y = tuple[Tensor]()
 register(deinit)
 basicConfig(level='INFO')
-if getenv('DEBUGNOIMP'):
-    warning('no imp')
+if getenv('NOINPLACE'):
     ggml_add_inplace = ggml_add
     ggml_sub_inplace = ggml_sub
     ggml_mul_inplace = ggml_mul

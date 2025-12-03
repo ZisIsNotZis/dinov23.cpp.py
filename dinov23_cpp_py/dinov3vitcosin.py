@@ -14,42 +14,42 @@ def run(x: np.ndarray, model=getenv('MODEL', '../hf/dinov3-vits16-pretrain-lvd16
     if x.shape != SHAPE:
         layer = getint('num_hidden_layers')
         PATCHSZ = getint('patch_size')
-        IMGSZ = getint('image_size')
-        HIDDENSZ = getint('hidden_size')
-        headsz = HIDDENSZ // gg.HEAD
+        h = x.shape[1] // PATCHSZ
+        w = x.shape[2] // PATCHSZ
+        headsz = getint('hidden_size') // gg.HEAD
         reg = getint('num_register_tokens')
         X = Tensor(x.shape[::-1]).named('x')
-        COS = Tensor((headsz, x.shape[1] * x.shape[2] // PATCHSZ ** 2), GGML_TYPE_F32).named('cos')
-        SIN = Tensor((headsz, x.shape[1] * x.shape[2] // PATCHSZ ** 2), GGML_TYPE_F32).named('sin')
+        COS = Tensor((headsz, h*w), GGML_TYPE_F32).named('cos')
+        SIN = Tensor((headsz, h*w), GGML_TYPE_F32).named('sin')
         Y = X.conv2dnhwc('embeddings.patch_embeddings', PATCHSZ, PATCHSZ).flatten(1, 2).rcat(Tensor('embeddings.register_tokens').cat(Tensor('embeddings.cls_token'), 1), 1)
         for i in range(layer):
-            Y = Y.normscale(f'layer.{i}.norm1').atrope2(f'layer.{i}', COS, SIN).mul_(Tensor(f'layer.{i}.layer_scale1.lambda1')).add_(Y)
+            Y = Y.normscale(f'layer.{i}.norm1').atropecosin(f'layer.{i}', COS, SIN).mul_(Tensor(f'layer.{i}.layer_scale1.lambda1')).add_(Y)
             Y = Y.normscale(f'layer.{i}.norm2').mlpOrSwiglu(f'layer.{i}.mlp.').mul_(Tensor(f'layer.{i}.layer_scale2.lambda1')).add_(Y)
         Y = Y.normscale('norm').named('y')
         initgraph(Y)
-        cord = np.mgrid[-1 + PATCHSZ / x.shape[1]:1:2 * PATCHSZ / x.shape[1], -1 + PATCHSZ / x.shape[2]:1:2*PATCHSZ / x.shape[2]].reshape(1, 2, -1).T.astype('f')
-        freq = getfloat('rope_theta') ** np.arange(0, 1, 4 / headsz, 'f')
-        angle = np.tile((2 * np.pi * cord / freq).reshape(-1, headsz // 2), 2)
+        cord = np.mgrid[-1+1/h:1-1/h:h+0j, -1+1/w:1-1/w:w+0j].reshape(1, 2, -1).T.astype('f')
+        invfreq = 1 / getfloat('rope_theta') ** np.arange(0, 1, 4 / headsz, 'f')
+        angle = np.tile((2 * np.pi * cord * invfreq).reshape(-1, headsz // 2), 2)
         COS.setnp(np.cos(angle))
         SIN.setnp(np.sin(angle))
     X.setnp((x - np.array([123.675, 116.28, 103.53], 'f')) / np.array([58.395, 57.12, 57.375], 'f'))
     gg.run()
     y = Y.asnp()
-    return y[0, :, 4], y[0, :, 5:].reshape(y.shape[1], x.shape[1] // getint('patch_size'), -1, y.shape[3])
+    return y[0, :, 4], y[0, :, 5:].reshape(y.shape[1], x.shape[1] // PATCHSZ, -1, y.shape[3])
 
 
 SHAPE = ()
-IMGSZ = 224
 PATCHSZ = 16
 if __name__ == '__main__':
     X = [open(i) for i in argv[1:]]
+    s = int(getenv('SZ', max(max(i.size) for i in X)))//PATCHSZ*PATCHSZ
     r = np.exp(sum(np.log(i.size[1] / i.size[0]) for i in X) / len(X))
-    w, h = (int(IMGSZ / r / PATCHSZ) * PATCHSZ, IMGSZ) if r > 1 else (IMGSZ, int(IMGSZ * r / PATCHSZ) * PATCHSZ)
+    w, h = (int(s / r / PATCHSZ) * PATCHSZ, s) if r > 1 else (s, int(s * r / PATCHSZ) * PATCHSZ)
     X = np.stack([np.asarray(i.resize((w, h), Resampling.BOX))[..., :3] for i in X])
     Z, Y = run(X)
     for i, y, z in zip(argv[1:], Y, Z):
-        y.tofile(f'{i}dinov3vit.{','.join(map(str, y.shape))}f')
-        z.tofile(f'{i}dinov3vit.{','.join(map(str, z.shape))}f')
+        y.tofile(f'{i}dinov3vitcosin.{','.join(map(str, y.shape))}f')
+        z.tofile(f'{i}dinov3vitcosin.{','.join(map(str, z.shape))}f')
     if not getenv('VIS', ''):
         exit()
     Y = PCA(3).fit_transform(Y.reshape(-1, Y.shape[3])).reshape(*Y.shape[:3], -1)
@@ -57,4 +57,4 @@ if __name__ == '__main__':
     Y *= 255.9 / Y.max((1, 2), keepdims=True)
     Y = Y.astype('B')
     for i, y in zip(argv[1:], Y):
-        fromarray(y).resize((w, h), Resampling.LANCZOS).save(f'{i}dinov3vit.vis', 'jpeg')
+        fromarray(y).resize((w, h), Resampling.LANCZOS).save(f'{i}dinov3vitcosin.vis', 'jpeg')
