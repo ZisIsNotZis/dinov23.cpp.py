@@ -27,7 +27,7 @@ def run(x: np.ndarray, model=getenv('MODEL', '../hf/dinov3-convnext-tiny-pretrai
         except KeyError:
             pass
         Z = Y.pool2d()
-        Y = Y.normscale('layer_norm')
+        Y = Y.normscale('layer_norm').named('y')
         initgraph(Y, Z)
     X.setnp((x - np.array([123.675, 116.28, 103.53], 'f')) / np.array([58.395, 57.12, 57.375], 'f'))
     gg.run()

@@ -31,7 +31,7 @@ def run(x: np.ndarray, model=getenv('MODEL', '../hf/dinov2-with-registers-small-
         for i in range(layer):
             Y = Y.normscale(f'encoder.layer.{i}.norm1').at(f'encoder.layer.{i}.attention').mul_(Tensor(f'encoder.layer.{i}.layer_scale1.lambda1')).add_(Y)
             Y = (Tensor.mlp if layer != 40 else lambda x, w: x.swiglu(w, 'silu'))(Y.normscale(f'encoder.layer.{i}.norm2'), f'encoder.layer.{i}.mlp.fc').mul_(Tensor(f'encoder.layer.{i}.layer_scale2.lambda1')).add_(Y)
-        Y = Y.normscale_('layernorm').named('y')
+        Y = Y.normscale('layernorm').named('y')
         initgraph(Y)
         EMB.setnp(remb(Tensor('embeddings.position_embeddings').asnp()[0, 0], x.shape[1] // PATCHSZ, x.shape[2] // PATCHSZ))
     X.setnp((x - np.array([123.675, 116.28, 103.53], 'f')).transpose(0, 3, 1, 2) / np.array([58.395, 57.12, 57.375], 'f')[:, None, None])

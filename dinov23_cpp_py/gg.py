@@ -384,7 +384,7 @@ class Tensor:
         return self.norm_().scale_(key).named('norm')
 
     def normscale(self, key: str) -> 'Tensor':
-        return self.norm().scale_(key).named('norm')
+        return self.norm().scale(key).named('norm')
 
     @log
     def lin(self, *key: str) -> 'Tensor':
