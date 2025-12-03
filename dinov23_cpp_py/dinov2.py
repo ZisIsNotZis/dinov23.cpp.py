@@ -44,7 +44,7 @@ SHAPE = ()
 PATCHSZ = 14
 if __name__ == '__main__':
     X = [open(i) for i in argv[1:]]
-    s = int(getenv('SZ', max(max(i.size)for i in X)))//PATCHSZ*PATCHSZ
+    s = int(getenv('SZ', max(max(i.size) for i in X)))//PATCHSZ*PATCHSZ
     r = np.exp(sum(np.log(i.size[1] / i.size[0]) for i in X) / len(X))
     w, h = (int(s / r / PATCHSZ) * PATCHSZ, s) if r > 1 else (s, int(s * r / PATCHSZ) * PATCHSZ)
     X = np.stack([np.asarray(i.resize((w, h), Resampling.BOX))[..., :3] for i in X])
@@ -54,9 +54,8 @@ if __name__ == '__main__':
         z.tofile(f'{i}dinov2.{','.join(map(str, z.shape))}f')
     if not getenv('VIS', ''):
         exit()
-    Y = PCA(3).fit_transform(Y.reshape(-1, Y.shape[3])).reshape(*Y.shape[:3], -1)
-    Y -= Y.min((1, 2), keepdims=True)
-    Y *= 255.9 / Y.max((1, 2), keepdims=True)
-    Y = Y.astype('B')
     for i, y in zip(argv[1:], Y):
-        fromarray(y).resize((w, h), Resampling.LANCZOS).save(f'{i}dinov2.vis', 'jpeg')
+        y = PCA(3).fit_transform(y.reshape(-1, y.shape[2])).reshape(len(y), -1, 3)
+        y -= y.min((0,1))
+        y *= 255.9/y.max((0,1))
+        fromarray(y.astype('B')).resize((w, h), Resampling.LANCZOS).save(f'{i}dinov3convnext.vis', 'jpeg')
